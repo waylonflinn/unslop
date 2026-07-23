@@ -8,9 +8,9 @@ from Markdown or text files. Generated output is evidence for later human or
 LLM adjudication; the producer does not silently make semantic decisions such
 as namespace assignment or cross-source precedence.
 
-Read `DESIGN.md` before changing vocabulary behavior. It is authoritative for
-scoring, namespace mechanics, output semantics, validation targets, and
-deferred work.
+Read `design/001_BASIC_CONCEPT.md` before changing vocabulary behavior. It is
+authoritative for scoring, namespace mechanics, output semantics, validation
+targets, and deferred work.
 
 ## Engineering values
 
@@ -18,7 +18,7 @@ deferred work.
 - **Understanding:** Verify parser and corpus behavior rather than relying on
   assumptions about Markdown.
 - **Utility:** Optimize the producer for recall and future consumers for
-  precision, as specified in `DESIGN.md`.
+  precision, as specified in `design/001_BASIC_CONCEPT.md`.
 - **Economy:** Prefer one shared mechanism over parallel implementations.
 - **Honesty:** Report material flaws or design conflicts directly.
 - **Iteration:** Deliver the smallest useful tested slice; let measured evidence
@@ -80,7 +80,7 @@ non-ASCII cases when changing source alignment.
 
 Scoring rules and thresholds are measured starting points, not intuition-driven
 constants. Changes require tests and a corpus comparison against the validation
-target in `DESIGN.md`.
+target in `design/001_BASIC_CONCEPT.md`.
 
 Required attributes are preconditions: when a `--require-*` option is present,
 candidates missing that attribute are discarded before scoring.
@@ -156,8 +156,8 @@ Use tests as the contract before changing production behavior.
   `tests/test_cli.py`.
 - Assert raw positions by slicing the original string with `begin:end`.
 - Preserve the measured corpus target: 157 of 159 hand-key identifiers, with
-  only `S1` and `S2` intentionally hand-seeded, unless `DESIGN.md` is explicitly
-  revised on new evidence.
+  only `S1` and `S2` intentionally hand-seeded, unless
+  `design/001_BASIC_CONCEPT.md` is explicitly revised on new evidence.
 - Keep output-order assertions deterministic.
 
 After meaningful changes, run the complete suite and regenerate documentation

@@ -19,8 +19,9 @@ Available now:
 - Python APIs for definition scanning, occurrence discovery, and key I/O.
 
 The vocabulary consumer, path-reference checks, gloss extraction, grouped
-output, and rewrite support remain deferred. See [DESIGN.md](DESIGN.md) for the
-full design, validation evidence, and open decisions.
+output, and rewrite support remain deferred. See
+[001_BASIC_CONCEPT.md](design/001_BASIC_CONCEPT.md) for the full design,
+validation evidence, and open decisions.
 
 ## Installation
 
@@ -166,8 +167,9 @@ descriptors, or templates rather than editing files under `docs/` directly.
 ```text
 .
 ├── AGENTS.md                 Agent orientation and engineering invariants
-├── DESIGN.md                 Vocabulary design, evidence, and open decisions
 ├── README.md                 User and contributor guide
+├── design/
+│   └── 001_BASIC_CONCEPT.md  Vocabulary design, evidence, and open decisions
 ├── docs/                     Generated API documentation
 ├── griffonner/               Documentation pages and templates
 ├── src/unslop/               Python package and CLI
