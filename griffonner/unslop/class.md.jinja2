@@ -1,0 +1,179 @@
+{%- import "unslop/macros.jinja2" as macros -%}
+# {{ obj.name }}
+`{{obj.relative_filepath}}`{% if obj.lineno %} · _lines {{ obj.lineno }}–{{ obj.endlineno }}_{% endif %}
+
+{%- if obj.docstring %}
+{%- for section in obj.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+
+{{ section.value }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if obj.docstring %}
+{%- for section in obj.docstring.parsed %}
+{%- if section.kind.value == "attributes" %}
+
+## Attributes
+
+{%- for attr in section.value %}
+- `{{ attr.name }}`{% if attr.annotation %} (`{{ attr.annotation }}`){% endif %} — {{ attr.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- set init = obj.members.get('__init__') %}
+{%- if init %}
+
+## Constructor{% if init.lineno %} · _lines {{ init.lineno }}–{{ init.endlineno }}_{% endif %}
+
+```python
+{{ macros.render_sig(obj.name, init.parameters) }}
+```
+{%- if init.docstring %}
+{%- for section in init.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+
+{{ section.value }}
+
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- set ns2 = namespace(has_params=false) %}
+{%- if init.docstring %}
+{%- for section in init.docstring.parsed %}
+{%- if section.kind.value == "parameters" %}
+{%- set ns2.has_params = true %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if ns2.has_params %}
+
+**Args:**
+{%- for section in init.docstring.parsed %}
+{%- if section.kind.value == "parameters" %}
+{% for param in section.value %}
+- `{{ param.name }}`{% if param.annotation %} (`{{ param.annotation }}`){% endif %} — {{ param.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+
+{%- set ns = namespace(has_properties=false) %}
+{%- for name, member in obj.members.items() %}
+{%- if not member.is_alias and "property" in member.labels and not name.startswith('_') %}
+{%- set ns.has_properties = true %}
+{%- endif %}
+{%- endfor %}
+{%- if ns.has_properties %}
+
+## Properties
+{%- for name, member in obj.members.items() %}
+{%- if not member.is_alias and "property" in member.labels and not name.startswith('_') %}
+
+### {{ member.name }} · _lines {{ member.lineno }}–{{ member.endlineno }}_
+
+```python
+{{ member.name }} -> {{ member.annotation }}
+```
+{%- if member.docstring %}
+{%- for section in member.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+
+{{ section.value }}
+
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if member.docstring %}
+{%- for section in member.docstring.parsed %}
+{%- if section.kind.value == "returns" %}
+{%- for ret in section.value %}
+**Returns:** {{ ret.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- set ns = namespace(has_methods=false) %}
+{%- for name, member in obj.members.items() %}
+{%- if not member.is_alias and member.kind.value == "function" and not name.startswith('_') %}
+{%- set ns.has_methods = true %}
+{%- endif %}
+{%- endfor %}
+{%- if ns.has_methods %}
+
+## Methods
+{%- for name, method in obj.members.items() %}
+{%- if not method.is_alias and method.kind.value == "function" and not name.startswith('_') %}
+
+### {{ method.name }} · _lines {{ method.lineno }}–{{ method.endlineno }}_
+
+```python
+{{ macros.render_sig(method.name, method.parameters) }} -> {{ method.returns }}
+```
+{%- if method.docstring %}
+{%- for section in method.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+
+{{ section.value }}
+
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- set ns2 = namespace(has_params=false) %}
+{%- if method.docstring %}
+{%- for section in method.docstring.parsed %}
+{%- if section.kind.value == "parameters" %}
+{%- set ns2.has_params = true %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if ns2.has_params %}
+
+**Args:**
+{%- for section in method.docstring.parsed %}
+{%- if section.kind.value == "parameters" %}
+{% for param in section.value %}
+- `{{ param.name }}`{% if param.annotation %} (`{{ param.annotation }}`){% endif %} — {{ param.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if method.docstring %}
+{%- for section in method.docstring.parsed %}
+{%- if section.kind.value == "returns" %}
+{%- for ret in section.value %}
+
+**Returns:** {{ ret.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- if method.docstring %}
+{%- for section in method.docstring.parsed %}
+{%- if section.kind.value == "raises" %}
+
+**Raises:**
+{%- for raised in section.value %}
+- `{{ raised.annotation }}` — {{ raised.description }}
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}

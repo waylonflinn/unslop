@@ -1,0 +1,73 @@
+{%- macro estimate_tokens(cls) -%}
+{%- set ns = namespace(chars=0) -%}
+{%- if cls.docstring %}{% set ns.chars = ns.chars + cls.docstring.value | length %}{% endif -%}
+{%- for name, method in cls.members.items() -%}
+  {%- if method.kind.value == "function" -%}
+    {%- set ns.chars = ns.chars + name | length -%}
+    {%- if method.docstring %}{% set ns.chars = ns.chars + method.docstring.value | length %}{% endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ (ns.chars*1.6 / 4) | int }}
+{%- endmacro -%}
+
+{%- import "unslop/macros.jinja2" as macros -%}
+# unslop API
+
+{%- if obj.docstring %}
+{%- for section in obj.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+{{ section.value }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+## Modules
+
+- [Vocabulary](Vocabulary.md) — parser policy, occurrence discovery, and definition scoring.
+- [Keyfile](Keyfile.md) — generated-key metadata and canonical CSV persistence.
+- [CLI](CLI.md) — corpus traversal, key production, and human-readable rendering.
+
+## Classes
+
+{%- for name, cls in obj.classes.items() %}
+{%- if not name.startswith('_') %}
+
+### {{ cls.name }}
+`{{cls.relative_filepath}}` · _lines {{ cls.lineno }}–{{ cls.endlineno }}_
+
+{% if cls.docstring -%}
+{%- for section in cls.docstring.parsed %}
+{%- if section.kind.value == "text" %}
+{{ section.value }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+{%- set ns = namespace(has_methods=false) %}
+{%- for name, member in cls.members.items() %}
+{%- if member.kind.value == "function" and not name.startswith('_') %}
+{%- set ns.has_methods = true %}
+{%- endif %}
+{%- endfor %}
+
+{%- if ns.has_methods %}
+#### Interface
+
+```python
+{%- set init = cls.members.get('__init__') %}
+{%- if init %}
+{{ macros.render_sig(cls.name, init.parameters) }}
+{% endif -%}
+
+{%- for name, method in cls.members.items() %}
+{%- if method.kind.value == "function" and not name.startswith('_') %}
+{{ macros.render_sig(cls.name ~ "." ~ method.name, method.parameters) }} -> {{ method.returns }}
+{% endif -%}
+{%- endfor %}
+```
+{%- endif %}
+
+→ [{{ cls.name }}]({{ cls.name }}.md) (~{{ estimate_tokens(cls) }} tokens)
+
+{%- endif %}
+{%- endfor %}

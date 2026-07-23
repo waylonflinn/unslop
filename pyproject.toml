@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unslop"
+version = "0.1.0"
+description = "Mechanical cleanup and consistency tools for prose corpora"
+requires-python = ">=3.10"
+dependencies = ["markdown-it-py>=3.0.0"]
+
+[project.scripts]
+unslop = "unslop.cli:entrypoint"
+
+[dependency-groups]
+dev = [
+    "griffonner>=0.3.5",
+    "pytest>=9.0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
