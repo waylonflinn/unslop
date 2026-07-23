@@ -1,7 +1,7 @@
 {%- macro render_sig(prefix, parameters) -%}
 {%- set ns = namespace(args=[]) -%}
 {%- for p in parameters -%}
-  {%- if p.name != "self" -%}
+{%- if p.name not in ["self", "cls"] -%}
     {%- if p.default -%}
       {%- set ns.args = ns.args + [p.name ~ ": " ~ p.annotation ~ " = " ~ p.default] -%}
     {%- else -%}

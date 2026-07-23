@@ -82,3 +82,17 @@ def test_directory_scan_is_flat_until_recursive(tmp_path):
 
     assert [record.identifier for record in read_key(flat).records] == ["CA1"]
     assert [record.identifier for record in read_key(recursive).records] == ["CA1", "Q11"]
+
+
+def test_verbose_report_uses_below_threshold_harvest(tmp_path, capsys):
+    source = write(
+        tmp_path / "one.md",
+        "- **CA1**: A catalog rule\n"
+        "- **LongName**: A low-scoring identifier\n",
+    )
+
+    assert main(["vocab", str(source), "-o", str(tmp_path / "key.csv"), "-v"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Identifiers: CA1" in output
+    assert "Below threshold: LongName" in output

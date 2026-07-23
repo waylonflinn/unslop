@@ -8,15 +8,11 @@ aligned table including all artifact metadata.
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
-import os
 from pathlib import Path
 
-from .keyfile import FIELDS, KeyMetadata, VocabularyKey, read_key, write_key
-from .vocabulary import ScanOptions, VocabularyRecord, scan_text
-
-
-SUPPORTED_INPUTS = {".md", ".txt"}
+from .keyfile import FIELDS, read_key, write_key
+from .producer import Corpus, VocabularyProducer
+from .vocabulary import Definition, DefinitionCriteria
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,44 +83,6 @@ def entrypoint() -> None:
     raise SystemExit(main())
 
 
-def _expand_inputs(inputs: list[Path], recursive: bool) -> list[Path]:
-    """Resolve, deduplicate, and order supported input documents.
-
-    Directory inputs are flat unless recursion is requested. Only `.md` and
-    `.txt` files are admitted.
-
-    Args:
-        inputs: Files and directories supplied by the user.
-        recursive: Whether directory traversal includes descendants.
-
-    Returns:
-        Unique absolute file paths sorted lexicographically.
-
-    Raises:
-        ValueError: If an input is missing, a file type is unsupported, or no
-            documents are found.
-    """
-    files: set[Path] = set()
-    for supplied in inputs:
-        path = supplied.resolve()
-        if path.is_file():
-            if path.suffix.lower() not in SUPPORTED_INPUTS:
-                raise ValueError(f"unsupported input type: {supplied}")
-            files.add(path)
-        elif path.is_dir():
-            iterator = path.rglob("*") if recursive else path.glob("*")
-            files.update(
-                candidate.resolve()
-                for candidate in iterator
-                if candidate.is_file() and candidate.suffix.lower() in SUPPORTED_INPUTS
-            )
-        else:
-            raise ValueError(f"input does not exist: {supplied}")
-    if not files:
-        raise ValueError("no .md or .txt input files found")
-    return sorted(files, key=lambda path: str(path))
-
-
 def _namespace_name(path: Path) -> str:
     """Derive a long namespace name by stripping every file extension.
 
@@ -156,8 +114,6 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
         OSError: If an input or output cannot be read or written.
         ValueError: If output or filtering arguments are invalid.
     """
-    # Skipped from docstring:
-    # - Verbose rescanning mechanics: only the additional report is public.
     if args.output.suffix.lower() != ".csv":
         raise ValueError("output must have a .csv extension")
     if args.output.exists() and not args.force:
@@ -165,9 +121,8 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
     if args.require_size is not None and args.require_size < 1:
         raise ValueError("--require-size must be at least 1")
 
-    inputs = _expand_inputs(args.inputs, args.recursive)
-    root = Path(os.path.commonpath([str(path.parent) for path in inputs]))
-    options = ScanOptions(
+    corpus = Corpus.discover(args.inputs, args.recursive)
+    criteria = DefinitionCriteria(
         identifier_threshold=args.identifier_threshold,
         definition_threshold=args.definition_threshold,
         require_capitalization=args.require_capitalization,
@@ -175,41 +130,26 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
         require_size=args.require_size,
         include_single_letter=args.include_single_letter,
     )
-    records: list[VocabularyRecord] = []
-    for path in inputs:
-        text = path.open("r", encoding="utf-8", newline="").read()
-        relative = path.relative_to(root).as_posix()
-        records.extend(
-            replace(record, path=relative)
-            for record in scan_text(text, path, options)
-        )
-    records.sort(key=lambda item: (item.path, item.begin, item.identifier))
-
-    metadata = KeyMetadata(
-        file_root=str(root),
+    harvest = VocabularyProducer().produce(
+        corpus,
+        criteria=criteria,
         namespace_id=args.namespace_id,
         namespace_name=_namespace_name(args.output),
-        file_set=tuple(path.relative_to(root).as_posix() for path in inputs),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    write_key(args.output, VocabularyKey(metadata, tuple(records)))
+    records = list(harvest.key.records)
+    write_key(args.output, harvest.key)
     _print_summary(records)
 
     if args.verbose and args.identifier_threshold > 0:
-        lower_options = replace(options, identifier_threshold=0)
-        lower: list[VocabularyRecord] = []
-        for path in inputs:
-            text = path.open("r", encoding="utf-8", newline="").read()
-            lower.extend(
-                record
-                for record in scan_text(text, path, lower_options)
-                if record.identifier_score < args.identifier_threshold
-            )
-        _print_identifier_line("Below threshold", lower)
+        _print_identifier_line(
+            "Below threshold",
+            list(harvest.below_identifier_threshold),
+        )
     return 0
 
 
-def _print_identifier_line(label: str, records: list[VocabularyRecord]) -> None:
+def _print_identifier_line(label: str, records: list[Definition]) -> None:
     """Print records in descending definition-score order on one line.
 
     Args:
@@ -229,7 +169,7 @@ def _print_identifier_line(label: str, records: list[VocabularyRecord]) -> None:
     print(f"{label}: {rendered}")
 
 
-def _print_summary(records: list[VocabularyRecord]) -> None:
+def _print_summary(records: list[Definition]) -> None:
     """Print admitted definitions and their aggregate score summary.
 
     Args:

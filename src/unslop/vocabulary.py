@@ -1,6 +1,6 @@
 """Discover and score vocabulary in Markdown source.
 
-The scanner uses one Markdown parser configuration for both definition and
+Each scan uses one Markdown parser configuration for both definition and
 occurrence discovery. Parsed structure decides which content is eligible;
 reported positions always address the exact decoded source supplied by the
 caller.
@@ -8,7 +8,8 @@ caller.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 import html
 import re
@@ -61,8 +62,135 @@ def markdown_parser() -> MarkdownIt:
 
 
 @dataclass(frozen=True)
-class ScanOptions:
-    """Filtering and scoring thresholds for definition discovery.
+class SourceSpan:
+    """An exact, end-exclusive span in decoded source text.
+
+    Attributes:
+        begin: Zero-based Unicode-character offset where the span begins.
+        end: Exclusive Unicode-character offset where the span ends.
+        line: One-based line containing `begin`.
+    """
+
+    begin: int
+    end: int
+    line: int
+
+    def __post_init__(self) -> None:
+        """Validate coordinate ordering and units."""
+        if self.begin < 0:
+            raise ValueError("source span begin must not be negative")
+        if self.end < self.begin:
+            raise ValueError("source span end must not precede begin")
+        if self.line < 1:
+            raise ValueError("source span line must be at least 1")
+
+
+@dataclass(frozen=True)
+class SourceDocument:
+    """Exact decoded source and its raw-coordinate system.
+
+    `text` is retained without newline normalization. The document owns the
+    line index used to create and validate every reported source span.
+
+    Attributes:
+        path: Source identity copied into discovered occurrences.
+        text: Exact decoded source text.
+    """
+
+    path: Path
+    text: str
+    _lines: tuple[int, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Build the immutable line index."""
+        object.__setattr__(self, "_lines", tuple(_line_starts(self.text)))
+
+    def span(self, begin: int, end: int) -> SourceSpan:
+        """Create a validated span in this document.
+
+        Args:
+            begin: Zero-based beginning offset.
+            end: Exclusive ending offset.
+
+        Returns:
+            Span carrying the corresponding one-based line.
+
+        Raises:
+            ValueError: If either offset lies outside the document.
+        """
+        if end > len(self.text):
+            raise ValueError("source span extends beyond the document")
+        return SourceSpan(begin=begin, end=end, line=self.line_number(begin))
+
+    def line_number(self, offset: int) -> int:
+        """Return the one-based line containing a character offset.
+
+        Args:
+            offset: Character offset from zero through the document length.
+
+        Returns:
+            One-based source line.
+
+        Raises:
+            ValueError: If `offset` lies outside the document.
+        """
+        if offset < 0 or offset > len(self.text):
+            raise ValueError("source offset lies outside the document")
+        return _line_number(self._lines, offset)
+
+    def extract(self, span: SourceSpan) -> str:
+        """Return the exact source addressed by a span.
+
+        Args:
+            span: Coordinates in this document.
+
+        Returns:
+            Exact decoded substring.
+
+        Raises:
+            ValueError: If the span extends beyond the document or carries an
+                inconsistent line number.
+        """
+        if span.end > len(self.text):
+            raise ValueError("source span extends beyond the document")
+        if self.line_number(span.begin) != span.line:
+            raise ValueError("source span line does not match its beginning")
+        return self.text[span.begin : span.end]
+
+
+class DefinitionPosition(Enum):
+    """Structural Markdown position carrying definition evidence."""
+
+    BARE = "bare"
+    HEADING = "heading"
+    LIST_ITEM = "list"
+    LIST_CONTINUATION = "list_continuation"
+    TABLE_FIRST_CELL = "table"
+    TABLE_OTHER_CELL = "table_other"
+
+    @property
+    def eligible(self) -> bool:
+        """Whether an opening identifier may define vocabulary here."""
+        return self not in {
+            DefinitionPosition.LIST_CONTINUATION,
+            DefinitionPosition.TABLE_OTHER_CELL,
+        }
+
+    @property
+    def score(self) -> int:
+        """Definition evidence contributed by this position."""
+        if self in {
+            DefinitionPosition.HEADING,
+            DefinitionPosition.LIST_ITEM,
+            DefinitionPosition.TABLE_FIRST_CELL,
+        }:
+            return 2
+        return 0
+
+
+@dataclass(frozen=True)
+class DefinitionCriteria:
+    """Preconditions and score thresholds for definition discovery.
 
     Required attributes are applied before scoring. All requested requirements
     must hold for a candidate to enter scoring.
@@ -88,33 +216,15 @@ class ScanOptions:
     require_size: int | None = None
     include_single_letter: bool = False
 
-
-@dataclass(frozen=True)
-class VocabularyRecord:
-    """A scored vocabulary definition at an exact source position.
-
-    Attributes:
-        identifier: Identifier text exactly as it appears in source.
-        identifier_score: Score produced by the identifier heuristics.
-        definition_score: Score produced by the definition heuristics.
-        path: Source path supplied by the caller or normalized by a front-end.
-        line: One-based source line containing the identifier.
-        begin: Zero-based Unicode-character offset of the identifier.
-        end: Exclusive Unicode-character offset of the identifier.
-    """
-
-    identifier: str
-    identifier_score: int
-    definition_score: int
-    path: str
-    line: int
-    begin: int
-    end: int
+    def __post_init__(self) -> None:
+        """Validate criteria that have an intrinsic lower bound."""
+        if self.require_size is not None and self.require_size < 1:
+            raise ValueError("require_size must be at least 1")
 
 
 @dataclass(frozen=True)
-class VocabularyOccurrence:
-    """An unscored identifier occurrence at an exact source position.
+class Occurrence:
+    """An identifier occurrence at an exact source position.
 
     Attributes:
         identifier: Identifier text exactly as it appears in source.
@@ -130,16 +240,31 @@ class VocabularyOccurrence:
     begin: int
     end: int
 
+    def __post_init__(self) -> None:
+        """Validate the flattened source coordinates."""
+        SourceSpan(begin=self.begin, end=self.end, line=self.line)
+
+    @property
+    def span(self) -> SourceSpan:
+        """Return this occurrence's coordinates as a value object."""
+        return SourceSpan(begin=self.begin, end=self.end, line=self.line)
+
 
 @dataclass(frozen=True)
-class _Context:
-    """Structural Markdown position associated with an inline occurrence."""
+class Definition(Occurrence):
+    """A scored vocabulary definition, behaviorally also an occurrence.
 
-    position_kind: str
+    Attributes:
+        identifier_score: Score produced by the identifier heuristics.
+        definition_score: Score produced by the definition heuristics.
+    """
+
+    identifier_score: int
+    definition_score: int
 
 
 @dataclass(frozen=True)
-class _Occurrence:
+class _ScannedOccurrence:
     """Internal occurrence with definition-relevant structural attributes."""
 
     identifier: str
@@ -149,102 +274,103 @@ class _Occurrence:
     bold: bool
 
 
-def scan_text(
-    text: str, path: Path, options: ScanOptions | None = None
-) -> list[VocabularyRecord]:
-    """Find and score vocabulary definitions in exact decoded source text.
+@dataclass(frozen=True)
+class VocabularyScan:
+    """One reusable vocabulary analysis of a source document.
 
-    Candidates must open an eligible Markdown position and satisfy all required
-    attributes before scoring. Results preserve document order. `begin` and
-    `end` are zero-based Unicode-character offsets into `text`; `end` is
-    exclusive and `line` is one-based.
+    The Markdown parse and raw-source alignment happen once. Callers may then
+    obtain every admitted occurrence or apply different definition criteria
+    without reparsing the document.
 
-    Args:
-        text: Exact decoded Markdown source. Newline characters are part of the
-            coordinate system and must not be normalized after scanning.
-        path: Source identity copied into each result.
-        options: Filtering and scoring configuration. Uses Production defaults
-            when omitted.
-
-    Returns:
-        One record per admitted definition, in source order.
+    Attributes:
+        document: Exact source that was analyzed.
     """
-    # Skipped from docstring:
-    # - Parser/source alignment mechanics: callers only depend on raw positions.
-    options = options or ScanOptions()
-    line_starts = _line_starts(text)
-    records: list[VocabularyRecord] = []
 
-    for occurrence, context in _source_occurrences(text):
-        if not occurrence.opens_block or context.position_kind in {
-            "table_other",
-            "list_continuation",
-        }:
-            continue
-        attributes = _identifier_attributes(occurrence.identifier)
-        if not _meets_requirements(attributes, options):
-            continue
-        identifier_score = _identifier_score(attributes)
-        if identifier_score < options.identifier_threshold:
-            continue
-        definition_score = _definition_score(text, occurrence, context)
-        if definition_score < options.definition_threshold:
-            continue
-        records.append(
-            VocabularyRecord(
+    document: SourceDocument
+    _found: tuple[tuple[_ScannedOccurrence, DefinitionPosition], ...] = field(
+        init=False, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        """Parse and align the document once for all later views."""
+        object.__setattr__(
+            self,
+            "_found",
+            tuple(_source_occurrences(self.document)),
+        )
+
+    @property
+    def occurrences(self) -> tuple[Occurrence, ...]:
+        """Return every occurrence admitted by the shared inline policy."""
+        return tuple(
+            Occurrence(
                 identifier=occurrence.identifier,
-                identifier_score=identifier_score,
-                definition_score=definition_score,
-                path=str(path),
-                line=_line_number(line_starts, occurrence.begin),
+                path=str(self.document.path),
+                line=self.document.line_number(occurrence.begin),
                 begin=occurrence.begin,
                 end=occurrence.end,
             )
+            for occurrence, _position in self._found
         )
 
-    return records
+    def definitions(
+        self, criteria: DefinitionCriteria | None = None
+    ) -> tuple[Definition, ...]:
+        """Select and score definitions from this analysis.
+
+        Args:
+            criteria: Preconditions and thresholds. Uses Production defaults
+                when omitted.
+
+        Returns:
+            Admitted definitions in source order.
+        """
+        active = criteria or DefinitionCriteria()
+        definitions: list[Definition] = []
+        for occurrence, position in self._found:
+            if not occurrence.opens_block or not position.eligible:
+                continue
+            shape = _identifier_shape(occurrence.identifier)
+            if not _meets_requirements(shape, active):
+                continue
+            identifier_score = _identifier_score(shape)
+            if identifier_score < active.identifier_threshold:
+                continue
+            definition_score = _definition_score(
+                self.document.text, occurrence, position
+            )
+            if definition_score < active.definition_threshold:
+                continue
+            definitions.append(
+                Definition(
+                    identifier=occurrence.identifier,
+                    identifier_score=identifier_score,
+                    definition_score=definition_score,
+                    path=str(self.document.path),
+                    line=self.document.line_number(occurrence.begin),
+                    begin=occurrence.begin,
+                    end=occurrence.end,
+                )
+            )
+        return tuple(definitions)
 
 
-def find_occurrences(text: str, path: Path) -> list[VocabularyOccurrence]:
-    """Find unscored identifiers admitted by the shared inline policy.
-
-    Ordinary text, link labels, and inline code are included. Link destinations
-    and titles, images, code blocks, and raw HTML are excluded. No identifier or
-    definition threshold is applied.
-
-    Args:
-        text: Exact decoded Markdown source.
-        path: Source identity copied into each occurrence.
-
-    Returns:
-        Identifier occurrences in source order with raw-source coordinates.
-    """
-    line_starts = _line_starts(text)
-    return [
-        VocabularyOccurrence(
-            identifier=occurrence.identifier,
-            path=str(path),
-            line=_line_number(line_starts, occurrence.begin),
-            begin=occurrence.begin,
-            end=occurrence.end,
-        )
-        for occurrence, _context in _source_occurrences(text)
-    ]
-
-
-def _source_occurrences(text: str) -> list[tuple[_Occurrence, _Context]]:
+def _source_occurrences(
+    document: SourceDocument,
+) -> list[tuple[_ScannedOccurrence, DefinitionPosition]]:
     """Associate admitted inline occurrences with Markdown position context.
 
     Args:
-        text: Exact decoded Markdown source.
+        document: Exact decoded Markdown source and its line index.
 
     Returns:
         Occurrences paired with their heading, table, list, or bare context in
         document order.
     """
+    text = document.text
     tokens = markdown_parser().parse(text)
-    line_starts = _line_starts(text)
-    found: list[tuple[_Occurrence, _Context]] = []
+    line_starts = document._lines
+    found: list[tuple[_ScannedOccurrence, DefinitionPosition]] = []
 
     heading = False
     list_item_inlines: list[bool] = []
@@ -270,18 +396,18 @@ def _source_occurrences(text: str) -> list[tuple[_Occurrence, _Context]]:
             table_column += 1
         elif token.type == "inline" and token.map and token.children:
             if heading:
-                context = _Context("heading")
+                position = DefinitionPosition.HEADING
             elif in_table and table_column == 0:
-                context = _Context("table")
+                position = DefinitionPosition.TABLE_FIRST_CELL
             elif in_table:
-                context = _Context("table_other")
+                position = DefinitionPosition.TABLE_OTHER_CELL
             elif list_item_inlines and not list_item_inlines[-1]:
-                context = _Context("list")
+                position = DefinitionPosition.LIST_ITEM
                 list_item_inlines[-1] = True
             elif list_item_inlines:
-                context = _Context("list_continuation")
+                position = DefinitionPosition.LIST_CONTINUATION
             else:
-                context = _Context("bare")
+                position = DefinitionPosition.BARE
 
             start_line, end_line = token.map
             source_begin = line_starts[start_line]
@@ -293,11 +419,14 @@ def _source_occurrences(text: str) -> list[tuple[_Occurrence, _Context]]:
                 token.children,
                 source,
                 source_begin,
-                only_first_line=context.position_kind
-                in {"list", "list_continuation"},
+                only_first_line=position
+                in {
+                    DefinitionPosition.LIST_ITEM,
+                    DefinitionPosition.LIST_CONTINUATION,
+                },
             )
             for occurrence in occurrences:
-                found.append((occurrence, context))
+                found.append((occurrence, position))
     return found
 
 
@@ -363,7 +492,7 @@ def _inside(offset: int, ranges: list[tuple[int, int]]) -> bool:
 
 def _inline_occurrences(
     children, source: str, source_begin: int, *, only_first_line: bool = False
-) -> list[_Occurrence]:
+) -> list[_ScannedOccurrence]:
     """Map eligible parsed identifiers back to raw-source positions.
 
     Args:
@@ -420,7 +549,7 @@ def _inline_occurrences(
         for match in _CANDIDATE_RE.finditer(source)
         if not _inside(match.start(), excluded)
     ]
-    occurrences: list[_Occurrence] = []
+    occurrences: list[_ScannedOccurrence] = []
     raw_index = 0
     for identifier, opens_block, bold in semantic:
         while (
@@ -432,7 +561,7 @@ def _inline_occurrences(
             continue
         match = raw_candidates[raw_index]
         occurrences.append(
-            _Occurrence(
+            _ScannedOccurrence(
                 identifier=identifier,
                 begin=source_begin + match.start(),
                 end=source_begin + match.end(),
@@ -445,7 +574,7 @@ def _inline_occurrences(
 
 
 @dataclass(frozen=True)
-class _IdentifierAttributes:
+class _IdentifierShape:
     """Normalized identifier properties consumed by requirements and scoring."""
 
     identifier: str
@@ -456,7 +585,7 @@ class _IdentifierAttributes:
     single_letter: bool
 
 
-def _identifier_attributes(identifier: str) -> _IdentifierAttributes:
+def _identifier_shape(identifier: str) -> _IdentifierShape:
     """Derive scoring attributes from an identifier.
 
     Args:
@@ -468,7 +597,7 @@ def _identifier_attributes(identifier: str) -> _IdentifierAttributes:
     scored_part = identifier.rsplit(".", 1)[-1]
     without_suffix = re.sub(r"(?<=\d)[a-d]$", "", scored_part)
     letters = "".join(character for character in without_suffix if character.isalpha())
-    return _IdentifierAttributes(
+    return _IdentifierShape(
         identifier=identifier,
         scored_part=scored_part,
         capitalized=bool(letters) and letters.isupper(),
@@ -479,56 +608,56 @@ def _identifier_attributes(identifier: str) -> _IdentifierAttributes:
 
 
 def _meets_requirements(
-    attributes: _IdentifierAttributes, options: ScanOptions
+    shape: _IdentifierShape, criteria: DefinitionCriteria
 ) -> bool:
     """Test pre-scoring requirements against identifier attributes.
 
     Args:
-        attributes: Derived identifier properties.
-        options: Active scan requirements.
+        shape: Derived identifier properties.
+        criteria: Active definition requirements.
 
     Returns:
         `True` when every requested requirement is satisfied.
     """
-    if attributes.single_letter and not options.include_single_letter:
+    if shape.single_letter and not criteria.include_single_letter:
         return False
-    if options.require_capitalization and not attributes.capitalized:
+    if criteria.require_capitalization and not shape.capitalized:
         return False
-    if options.require_number and not attributes.number_suffix:
+    if criteria.require_number and not shape.number_suffix:
         return False
-    if options.require_size is not None and attributes.size > options.require_size:
+    if criteria.require_size is not None and shape.size > criteria.require_size:
         return False
     return True
 
 
-def _identifier_score(attributes: _IdentifierAttributes) -> int:
+def _identifier_score(shape: _IdentifierShape) -> int:
     """Score capitalization, length, and numeric suffix evidence.
 
     Args:
-        attributes: Derived identifier properties.
+        shape: Derived identifier properties.
 
     Returns:
         Additive identifier score. Single-letter capitals receive the special
         score `1`.
     """
-    if attributes.single_letter and attributes.capitalized:
+    if shape.single_letter and shape.capitalized:
         return 1
-    score = 2 if attributes.capitalized else 0
-    if attributes.size <= 3:
+    score = 2 if shape.capitalized else 0
+    if shape.size <= 3:
         score += 3
-    elif attributes.size <= 5:
+    elif shape.size <= 5:
         score += 2
-    elif attributes.size <= 7:
+    elif shape.size <= 7:
         score += 1
-    if attributes.number_suffix:
+    if shape.number_suffix:
         score += 2
     return score
 
 
 def _definition_score(
     text: str,
-    occurrence: _Occurrence,
-    context: _Context,
+    occurrence: _ScannedOccurrence,
+    position: DefinitionPosition,
 ) -> int:
     """Score whether an opening occurrence behaves like a definition.
 
@@ -538,7 +667,7 @@ def _definition_score(
     Args:
         text: Exact decoded Markdown source.
         occurrence: Opening identifier occurrence to score.
-        context: Markdown position containing the occurrence.
+        position: Markdown position containing the occurrence.
 
     Returns:
         Additive definition score, or `0` for a non-opening occurrence.
@@ -546,7 +675,7 @@ def _definition_score(
     if not occurrence.opens_block:
         return 0
 
-    score = 2 if context.position_kind in {"heading", "table", "list"} else 0
+    score = position.score
     source_end = text.find("\n", occurrence.end)
     if source_end < 0:
         source_end = len(text)

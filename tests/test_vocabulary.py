@@ -1,11 +1,26 @@
 from pathlib import Path
 
-from unslop.vocabulary import ScanOptions, find_occurrences, scan_text
+import unslop
+import unslop.vocabulary as vocabulary
+from unslop.vocabulary import (
+    Definition,
+    DefinitionCriteria,
+    Occurrence,
+    SourceDocument,
+    VocabularyScan,
+)
 
 
 def by_identifier(text: str, **kwargs):
-    options = ScanOptions(**kwargs)
-    return {record.identifier: record for record in scan_text(text, Path("sample.md"), options)}
+    criteria = DefinitionCriteria(**kwargs)
+    document = SourceDocument(path=Path("sample.md"), text=text)
+    definitions = VocabularyScan(document).definitions(criteria)
+    return {definition.identifier: definition for definition in definitions}
+
+
+def occurrences(text: str):
+    document = SourceDocument(path=Path("sample.md"), text=text)
+    return VocabularyScan(document).occurrences
 
 
 def test_scores_supported_definition_shapes_and_raw_character_positions():
@@ -38,7 +53,7 @@ def test_inline_policy_includes_text_link_labels_and_code_but_not_other_location
         "```text\nSKEL\n```\n"
     )
 
-    identifiers = {item.identifier for item in find_occurrences(text, Path("sample.md"))}
+    identifiers = {item.identifier for item in occurrences(text)}
 
     assert {"CA1", "DC7", "Q11"} <= identifiers
     assert not {"MR5", "L1", "X4a", "B-Q7", "KEEL", "SKEL"} & identifiers
@@ -47,7 +62,7 @@ def test_inline_policy_includes_text_link_labels_and_code_but_not_other_location
 def test_void_html_excludes_the_tag_but_not_following_text():
     identifiers = {
         item.identifier
-        for item in find_occurrences("<br> CA1\n", Path("sample.md"))
+        for item in occurrences("<br> CA1\n")
     }
 
     assert identifiers == {"CA1"}
@@ -98,3 +113,52 @@ def test_only_opening_identifier_in_a_table_first_cell_gets_position_credit():
 
     assert "CATALOG" in records
     assert "SKEL1" not in records
+
+
+def test_scan_object_reuses_one_analysis_for_occurrences_and_definitions():
+    text = (
+        "CA1 is referenced here.\n"
+        "- **Q11**: A research question\n"
+        "- **LongName**: A low-scoring identifier\n"
+    )
+    document = SourceDocument(path=Path("sample.md"), text=text)
+
+    scan = VocabularyScan(document)
+
+    assert {item.identifier for item in scan.occurrences} >= {
+        "CA1",
+        "Q11",
+        "LongName",
+    }
+    assert [item.identifier for item in scan.definitions()] == ["Q11"]
+    permissive = DefinitionCriteria(identifier_threshold=0)
+    assert [item.identifier for item in scan.definitions(permissive)] == [
+        "Q11",
+        "LongName",
+    ]
+
+
+def test_definition_is_an_occurrence_with_a_source_span():
+    text = "Préface\r\n- **CA1**: A catalog definition\r\n"
+    document = SourceDocument(path=Path("sample.md"), text=text)
+
+    definition = VocabularyScan(document).definitions()[0]
+
+    assert isinstance(definition, Definition)
+    assert isinstance(definition, Occurrence)
+    assert document.extract(definition.span) == definition.identifier
+    assert definition.line == 2
+
+
+def test_legacy_vocabulary_api_is_absent():
+    legacy_names = {
+        "ScanOptions",
+        "VocabularyOccurrence",
+        "VocabularyRecord",
+        "find_occurrences",
+        "scan_text",
+    }
+
+    assert legacy_names.isdisjoint(unslop.__all__)
+    assert all(not hasattr(unslop, name) for name in legacy_names)
+    assert all(not hasattr(vocabulary, name) for name in legacy_names)

@@ -16,7 +16,7 @@ Available now:
 - `unslop vocabulary` (alias `unslop vocab`) — generate a vocabulary-key CSV.
 - `unslop show` — render a generated key and its comment-header metadata for
   human inspection.
-- Python APIs for definition scanning, occurrence discovery, and key I/O.
+- Python APIs for reusable document analysis, corpus production, and key I/O.
 
 The vocabulary consumer, path-reference checks, gloss extraction, grouped
 output, and rewrite support remain deferred. See
@@ -125,17 +125,22 @@ Use `unslop.keyfile.read_key` when the header metadata is also needed.
 ```python
 from pathlib import Path
 
-from unslop import ScanOptions, scan_text
+from unslop import DefinitionCriteria, SourceDocument, VocabularyScan
 
 path = Path("requirements.md")
 text = path.open("r", encoding="utf-8", newline="").read()
-records = scan_text(text, path, ScanOptions())
+document = SourceDocument(path=path, text=text)
+scan = VocabularyScan(document)
+definitions = scan.definitions(DefinitionCriteria())
+occurrences = scan.occurrences
 ```
 
-`find_occurrences` exposes the same parser and inline-content policy without
-definition scoring. `read_key` and `write_key` provide typed access to generated
-CSV artifacts. The generated [API documentation](docs/index.md) contains the
-complete public interface.
+One `VocabularyScan` supplies both definition and occurrence views without
+reparsing the document. For a file-backed corpus, use `Corpus.discover()` and
+`VocabularyProducer.produce()` to build a `VocabularyKey` in memory.
+`read_key` and `write_key` provide typed access to generated CSV artifacts.
+The generated [API documentation](docs/index.md) contains the complete public
+interface.
 
 ## Development
 
@@ -167,11 +172,16 @@ descriptors, or templates rather than editing files under `docs/` directly.
 ```text
 .
 ├── AGENTS.md                 Agent orientation and engineering invariants
+├── ARCHITECTURE.md           Object design and refactoring guide
+├── DOCUMENTATION.md          Code documentation guidelines
 ├── README.md                 User and contributor guide
 ├── design/
 │   └── 001_BASIC_CONCEPT.md  Vocabulary design, evidence, and open decisions
 ├── docs/                     Generated API documentation
 ├── griffonner/               Documentation pages and templates
-├── src/unslop/               Python package and CLI
+├── src/unslop/
+│   ├── producer.py           Corpus discovery and key production
+│   ├── vocabulary.py         Source analysis and scoring
+│   └── keyfile.py            Generated-key model and CSV persistence
 └── tests/                    Behavioral contract tests
 ```

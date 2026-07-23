@@ -11,7 +11,7 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
-from .vocabulary import VocabularyRecord
+from .vocabulary import Definition
 
 
 FIELDS = (
@@ -55,7 +55,7 @@ class VocabularyKey:
     """
 
     metadata: KeyMetadata
-    records: tuple[VocabularyRecord, ...]
+    records: tuple[Definition, ...]
 
 
 def write_key(path: Path, key: VocabularyKey) -> None:
@@ -132,7 +132,7 @@ def read_key(path: Path) -> VocabularyKey:
         if tuple(reader.fieldnames or ()) != FIELDS:
             raise ValueError(f"{path}: unexpected vocabulary key columns")
         records = tuple(
-            VocabularyRecord(
+            Definition(
                 identifier=row["identifier"],
                 identifier_score=int(row["identifier_score"]),
                 definition_score=int(row["definition_score"]),

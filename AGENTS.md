@@ -12,6 +12,10 @@ Read `design/001_BASIC_CONCEPT.md` before changing vocabulary behavior. It is
 authoritative for scoring, namespace mechanics, output semantics, validation
 targets, and deferred work.
 
+Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing object boundaries,
+module ownership, inheritance or composition relationships, or the public
+object model.
+
 ## Engineering values
 
 - **Excellence:** Prefer behavior that is correct, useful, and durable.
@@ -32,15 +36,20 @@ I/O paths required by both producer and future consumer operations.
 
 ```text
 CLI (`src/unslop/cli.py`)
-    ├── vocabulary scanning and scoring (`vocabulary.py`)
-    └── generated-key CSV persistence (`keyfile.py`)
+    ├── corpus discovery and key production (`producer.py`)
+    │   ├── vocabulary analysis (`vocabulary.py`)
+    │   └── generated-key model (`keyfile.py`)
+    └── generated-key CSV persistence and display (`keyfile.py`)
 ```
 
 - `vocabulary.py` owns the Markdown parser factory, tokenization, source
-  alignment, occurrence discovery, identifier scoring, and definition scoring.
+  alignment, occurrence discovery, identifier scoring, definition scoring,
+  source-coordinate objects, and reusable document scans.
+- `producer.py` owns corpus traversal, exact source reads, artifact metadata
+  derivation, and generated-key production.
 - `keyfile.py` owns the generated CSV schema and its two-line metadata header.
-- `cli.py` owns traversal, argument validation, artifact metadata derivation,
-  console summaries, and the human-readable `show` view.
+- `cli.py` owns argument validation, output-file policy, console summaries, and
+  the human-readable `show` view.
 - `__init__.py` defines the supported Python library surface.
 
 The command surface currently consists of:
@@ -71,7 +80,8 @@ positions.
 - `end` is exclusive.
 - `line` is one-based.
 - Coordinates address the exact decoded string supplied to the scanner.
-- CLI file reads use `newline=""`; do not normalize newlines before scanning.
+- `Corpus` source reads use `newline=""`; do not normalize newlines before
+  scanning.
 
 Every position change must be tested with source slicing. Include CRLF and
 non-ASCII cases when changing source alignment.
@@ -152,8 +162,8 @@ Use tests as the contract before changing production behavior.
 
 - Put scanner, position, token-policy, and scoring tests in
   `tests/test_vocabulary.py`.
-- Put traversal, CLI, CSV metadata, overwrite, and `show` tests in
-  `tests/test_cli.py`.
+- Put corpus and producer tests in `tests/test_producer.py`.
+- Put CLI, CSV metadata, overwrite, and `show` tests in `tests/test_cli.py`.
 - Assert raw positions by slicing the original string with `begin:end`.
 - Preserve the measured corpus target: 157 of 159 hand-key identifiers, with
   only `S1` and `S2` intentionally hand-seeded, unless
@@ -165,33 +175,8 @@ when public source locations or docstrings changed.
 
 ## Documentation
 
-Source docstrings follow PEP 257 and Google style. Documentation is written for
-consumers who cannot see the implementation.
-
-Document:
-
-- What a public class or function does.
-- Argument meaning and constraints.
-- Return contents and coordinate units.
-- Surprising behavior, exclusions, and failure conditions.
-- Outcome-focused algorithm behavior when needed for correct use.
-
-Avoid private implementation references in public docstrings. Complex private
-functions may document meaningful internal contracts. For non-trivial methods,
-include `Args:` and `Returns:`; include `Raises:` when failures are part of the
-consumer contract.
-
-When a relevant detail was considered but deliberately excluded, leave a
-reviewable comment immediately after the docstring:
-
-```python
-# Skipped from docstring:
-# - <detail>: <reason it is not part of the consumer contract>.
-```
-
-Generated files under `docs/` are not documentation sources. Change docstrings,
-files under `griffonner/pages/unslop/`, or templates under
-`griffonner/unslop/`, then regenerate.
+Follow [DOCUMENTATION.md](DOCUMENTATION.md) for consumer-focused docstrings,
+review practice, and Griffonner generation.
 
 ## Scope boundaries
 
@@ -219,5 +204,6 @@ flags, undocumented fields, or speculative compatibility layers.
 
 This directory is the standalone Unslop repository root. Keep paths relative
 to this directory and do not introduce dependencies on the neighboring
-Sloplight checkout. The Sloplight repository retains only a compatibility
-symlink at `scripts/vocab/VOCAB_EXTRACTION.md` for design traceability.
+Sloplight checkout. Sloplight retains a compatibility symlink at
+`scripts/vocab/VOCAB_EXTRACTION.md` for design traceability and the external
+acceptance harness at `scripts/vocab/validate_image_store_vocabulary.py`.
