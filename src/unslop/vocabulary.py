@@ -17,11 +17,15 @@ import re
 from markdown_it import MarkdownIt
 
 
-_CANDIDATE_RE = re.compile(
-    r"(?<![A-Za-z0-9])"
+_CANDIDATE_BODY = (
     r"(?:[A-Za-z][A-Za-z0-9]*\.)?"
     r"[A-Za-z]+(?:\d+[a-d]?)?(?:-[A-Z]+(?:\d+[a-d]?)?)*"
-    r"(?![A-Za-z0-9])"
+)
+_CANDIDATE_RE = re.compile(
+    rf"(?<![A-Za-z0-9]){_CANDIDATE_BODY}(?![A-Za-z0-9])"
+)
+_SEMANTIC_CANDIDATE_RE = re.compile(
+    rf"(?<![A-Za-z0-9_.]){_CANDIDATE_BODY}(?![A-Za-z0-9_.])"
 )
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9'-]*")
 _PAIRED_HTML_RE = re.compile(
@@ -196,8 +200,7 @@ class DefinitionCriteria:
     must hold for a candidate to enter scoring.
 
     Attributes:
-        identifier_threshold: Minimum identifier score to retain. Defaults to
-            the measured Production threshold of `3`.
+        identifier_threshold: Minimum identifier score to retain. Defaults to `4`.
         definition_threshold: Minimum definition score to retain. Defaults to
             the measured Production threshold of `3`.
         require_capitalization: Whether candidates must satisfy the
@@ -209,7 +212,7 @@ class DefinitionCriteria:
         include_single_letter: Whether single-letter candidates are eligible.
     """
 
-    identifier_threshold: int = 3
+    identifier_threshold: int = 4
     definition_threshold: int = 3
     require_capitalization: bool = False
     require_number: bool = False
@@ -539,7 +542,7 @@ def _inline_occurrences(
             at_line_start = not only_first_line
             continue
         if child.type in {"text", "code_inline"}:
-            for match in _CANDIDATE_RE.finditer(child.content):
+            for match in _SEMANTIC_CANDIDATE_RE.finditer(child.content):
                 semantic.append((match.group(0), at_line_start, bool(strong_depth)))
                 at_line_start = False
 
@@ -642,12 +645,12 @@ def _identifier_score(shape: _IdentifierShape) -> int:
     """
     if shape.single_letter and shape.capitalized:
         return 1
-    score = 2 if shape.capitalized else 0
+    score = 3 if shape.capitalized else 0
     if shape.size <= 3:
         score += 3
     elif shape.size <= 5:
         score += 2
-    elif shape.size <= 7:
+    elif shape.size <= 8:
         score += 1
     if shape.number_suffix:
         score += 2

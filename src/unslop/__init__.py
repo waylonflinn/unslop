@@ -7,6 +7,7 @@ interface adapts those objects for key generation and human-readable rendering.
 
 from .keyfile import KeyMetadata, VocabularyKey, read_key, write_key
 from .producer import Corpus, VocabularyHarvest, VocabularyProducer
+from .roots import ContainerRoot, FileRoot, RootOrigin
 from .vocabulary import (
     Definition,
     DefinitionCriteria,
@@ -22,11 +23,14 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Corpus",
+    "ContainerRoot",
     "Definition",
     "DefinitionCriteria",
     "DefinitionPosition",
+    "FileRoot",
     "KeyMetadata",
     "Occurrence",
+    "RootOrigin",
     "SourceDocument",
     "SourceSpan",
     "VocabularyHarvest",

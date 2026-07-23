@@ -25,6 +25,12 @@ output:
     griffe_target: "unslop.keyfile.KeyMetadata"
   - filename: "VocabularyKey.md"
     griffe_target: "unslop.keyfile.VocabularyKey"
+  - filename: "RootOrigin.md"
+    griffe_target: "unslop.roots.RootOrigin"
+  - filename: "ContainerRoot.md"
+    griffe_target: "unslop.roots.ContainerRoot"
+  - filename: "FileRoot.md"
+    griffe_target: "unslop.roots.FileRoot"
 griffe:
   loader:
     docstring_parser: "google"

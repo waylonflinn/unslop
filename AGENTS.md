@@ -12,6 +12,10 @@ Read `design/001_BASIC_CONCEPT.md` before changing vocabulary behavior. It is
 authoritative for scoring, namespace mechanics, output semantics, validation
 targets, and deferred work.
 
+Read `design/002_CONTAINER_RESOLUTION.md` before changing root selection,
+generated-key path anchoring, or key-path expansion. It is authoritative for
+container discovery, containment, and portable `file_root` behavior.
+
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing object boundaries,
 module ownership, inheritance or composition relationships, or the public
 object model.
@@ -36,7 +40,9 @@ I/O paths required by both producer and future consumer operations.
 
 ```text
 CLI (`src/unslop/cli.py`)
+    ├── container-root selection (`roots.py`)
     ├── corpus discovery and key production (`producer.py`)
+    │   ├── root serialization (`roots.py`)
     │   ├── vocabulary analysis (`vocabulary.py`)
     │   └── generated-key model (`keyfile.py`)
     └── generated-key CSV persistence and display (`keyfile.py`)
@@ -48,6 +54,8 @@ CLI (`src/unslop/cli.py`)
 - `producer.py` owns corpus traversal, exact source reads, artifact metadata
   derivation, and generated-key production.
 - `keyfile.py` owns the generated CSV schema and its two-line metadata header.
+- `roots.py` owns root provenance, Git discovery, containment, and conversion
+  between runtime container paths and serialized file roots.
 - `cli.py` owns argument validation, output-file policy, console summaries, and
   the human-readable `show` view.
 - `__init__.py` defines the supported Python library surface.
@@ -110,6 +118,10 @@ position. Wrapped list continuation lines do not inherit list-opening credit.
   producer.
 - Record and file-set paths are relative to the longest shared parent of all
   parsed files.
+- `Corpus.root` remains absolute. `file_root` is relative only when `--root` or
+  Git discovery supplies a containing root; otherwise it remains absolute.
+- Relative `file_root` values are canonical POSIX paths, require an explicit or
+  detected container when expanded, and must never traverse or escape it.
 - Input documents are canonicalized, deduplicated, and sorted
   lexicographically.
 - `--force` directly truncates and rewrites. Atomic replacement is deferred.
@@ -139,6 +151,9 @@ Run a focused test:
   tests/test_vocabulary.py::test_inline_policy_includes_text_link_labels_and_code_but_not_other_locations \
   -q
 ```
+
+Root-model, containment, and Git-discovery tests belong in
+`tests/test_roots.py`.
 
 Generate API documentation:
 

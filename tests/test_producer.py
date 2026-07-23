@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from unslop.producer import Corpus, VocabularyProducer
+from unslop.roots import ContainerRoot, FileRoot, RootOrigin
 from unslop.vocabulary import DefinitionCriteria
 
 
@@ -33,6 +34,7 @@ def test_producer_builds_a_key_and_below_threshold_report(tmp_path):
 
     assert corpus.root == tmp_path / "corpus"
     assert corpus.file_set == ("a.md", "nested/b.md")
+    assert harvest.key.metadata.file_root == FileRoot.parse(str(corpus.root))
     assert harvest.key.metadata.namespace_id == "REQ"
     assert harvest.key.metadata.namespace_name == "requirements"
     assert [record.identifier for record in harvest.key.records] == ["CA1", "Q11"]
@@ -48,3 +50,22 @@ def test_corpus_rejects_noncanonical_direct_construction(tmp_path):
     source = write(tmp_path / "corpus" / "one.md", "- **CA1**: A rule\n")
     with pytest.raises(ValueError, match="sorted and unique"):
         Corpus(root=tmp_path, files=(source, source))
+
+
+def test_producer_records_corpus_relative_to_supplied_container(tmp_path):
+    source = write(
+        tmp_path / "container" / "corpus" / "one.md",
+        "- **CA1**: A rule\n",
+    )
+    corpus = Corpus.discover([source])
+    container = ContainerRoot(tmp_path / "container", RootOrigin.EXPLICIT)
+
+    harvest = VocabularyProducer().produce(
+        corpus,
+        namespace_name="requirements",
+        container_root=container,
+    )
+
+    assert harvest.key.metadata.file_root == FileRoot.parse("corpus")
+    assert harvest.key.metadata.file_set == ("one.md",)
+    assert harvest.key.records[0].path == "one.md"

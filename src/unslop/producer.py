@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterator, Sequence
 
 from .keyfile import KeyMetadata, VocabularyKey
+from .roots import ContainerRoot, FileRoot
 from .vocabulary import (
     Definition,
     DefinitionCriteria,
@@ -138,6 +139,7 @@ class VocabularyProducer:
         criteria: DefinitionCriteria | None = None,
         namespace_id: str = "",
         namespace_name: str,
+        container_root: ContainerRoot | None = None,
     ) -> VocabularyHarvest:
         """Harvest definitions and build their generated key.
 
@@ -150,6 +152,8 @@ class VocabularyProducer:
                 defaults when omitted.
             namespace_id: Optional human-approved namespace identifier.
             namespace_name: Long namespace name for the generated artifact.
+            container_root: Runtime boundary used to record a portable root.
+                When omitted, metadata preserves the absolute corpus root.
 
         Returns:
             Generated key and diagnostic evidence.
@@ -171,8 +175,14 @@ class VocabularyProducer:
 
         records.sort(key=lambda item: (item.path, item.begin, item.identifier))
         below.sort(key=lambda item: (item.path, item.begin, item.identifier))
+        selected_root = container_root or ContainerRoot.filesystem(
+            containing=corpus.root
+        )
         metadata = KeyMetadata(
-            file_root=str(corpus.root),
+            file_root=FileRoot.from_corpus_root(
+                corpus.root,
+                container_root=selected_root,
+            ),
             namespace_id=namespace_id,
             namespace_name=namespace_name,
             file_set=corpus.file_set,

@@ -35,9 +35,9 @@ def test_scores_supported_definition_shapes_and_raw_character_positions():
 
     records = by_identifier(text)
 
-    assert records["B-Q7"].identifier_score == 6
+    assert records["B-Q7"].identifier_score == 7
     assert records["B-Q7"].definition_score == 5
-    assert records["X4a"].identifier_score == 7
+    assert records["X4a"].identifier_score == 8
     assert records["L1"].definition_score == 3
     assert records["KEEL"].definition_score == 3
     for identifier, record in records.items():
@@ -57,6 +57,28 @@ def test_inline_policy_includes_text_link_labels_and_code_but_not_other_location
 
     assert {"CA1", "DC7", "Q11"} <= identifiers
     assert not {"MR5", "L1", "X4a", "B-Q7", "KEEL", "SKEL"} & identifiers
+
+
+def test_literal_underscores_do_not_create_fragments_but_emphasis_remains():
+    text = (
+        "- [PROCESS_NOTES.md](../PROCESS_NOTES.md) — Process C8 notes\n"
+        "- _CA1_: A catalog rule\n"
+    )
+    document = SourceDocument(path=Path("sample.md"), text=text)
+    scan = VocabularyScan(document)
+
+    identifiers = {item.identifier for item in scan.occurrences}
+    definitions = scan.definitions()
+
+    assert not {"PROCESS", "NOTES.md", "md"} & identifiers
+    assert "C8" in identifiers
+    assert [item.identifier for item in definitions] == ["CA1"]
+    assert document.extract(definitions[0].span) == "CA1"
+
+    qualified_text = "REQ.CA1 is referenced here.\n"
+    qualified = occurrences(qualified_text)
+    assert qualified[0].identifier == "REQ.CA1"
+    assert qualified_text[qualified[0].begin : qualified[0].end] == "REQ.CA1"
 
 
 def test_void_html_excludes_the_tag_but_not_following_text():

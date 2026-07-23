@@ -11,6 +11,7 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
+from .roots import FileRoot
 from .vocabulary import Definition
 
 
@@ -30,8 +31,8 @@ class KeyMetadata:
     """Artifact-level namespace and source-set metadata.
 
     Attributes:
-        file_root: Base path against which every `file_set` and record path is
-            resolved.
+        file_root: Validated serialized base against which every `file_set`
+            and record path is resolved.
         namespace_id: Optional human-approved short namespace identifier. An
             empty string means the generated artifact awaits adjudication.
         namespace_name: Long namespace name derived from the output filename.
@@ -39,10 +40,15 @@ class KeyMetadata:
             `file_root`.
     """
 
-    file_root: str
+    file_root: FileRoot
     namespace_id: str
     namespace_name: str
     file_set: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Require the validated root value object at the artifact boundary."""
+        if not isinstance(self.file_root, FileRoot):
+            raise ValueError("file_root must be a FileRoot")
 
 
 @dataclass(frozen=True)
@@ -78,7 +84,7 @@ def write_key(path: Path, key: VocabularyKey) -> None:
     # Skipped from docstring:
     # - csv.writer configuration: canonical field semantics are the contract.
     with path.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(f"# {key.metadata.file_root}\n")
+        handle.write(f"# {str(key.metadata.file_root)}\n")
         metadata_fields = (
             key.metadata.namespace_id,
             key.metadata.namespace_name,
@@ -123,7 +129,7 @@ def read_key(path: Path) -> VocabularyKey:
         metadata_line = handle.readline()
         if not root_line.startswith("# ") or not metadata_line.startswith("# "):
             raise ValueError(f"{path}: missing vocabulary key comment header")
-        file_root = root_line[2:].rstrip("\r\n")
+        file_root = FileRoot.parse(root_line[2:].rstrip("\r\n"))
         metadata_fields = next(csv.reader([metadata_line[2:]]))
         if len(metadata_fields) < 2:
             raise ValueError(f"{path}: malformed vocabulary key metadata header")

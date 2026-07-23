@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .keyfile import FIELDS, read_key, write_key
 from .producer import Corpus, VocabularyProducer
+from .roots import ContainerRoot
 from .vocabulary import Definition, DefinitionCriteria
 
 
@@ -31,13 +32,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vocabulary.add_argument("inputs", nargs="+", type=Path)
     vocabulary.add_argument("--output", "-o", required=True, type=Path)
-    vocabulary.add_argument("--identifier-threshold", "-i", type=int, default=3)
+    vocabulary.add_argument("--identifier-threshold", "-i", type=int, default=4)
     vocabulary.add_argument("--definition-threshold", "-d", type=int, default=3)
     vocabulary.add_argument("--require-capitalization", "-c", action="store_true")
     vocabulary.add_argument("--require-number", "-n", action="store_true")
     vocabulary.add_argument("--require-size", "-s", type=int)
     vocabulary.add_argument("--include-single-letter", action="store_true")
     vocabulary.add_argument("--namespace-id", default="")
+    vocabulary.add_argument(
+        "--root",
+        "-R",
+        type=Path,
+        metavar="PATH",
+        help="base against which portable source paths are recorded",
+    )
     vocabulary.add_argument("--recursive", "-r", action="store_true")
     vocabulary.add_argument("--force", "-f", action="store_true")
     vocabulary.add_argument("--verbose", "-v", action="store_true")
@@ -101,8 +109,9 @@ def _namespace_name(path: Path) -> str:
 def _run_vocabulary(args: argparse.Namespace) -> int:
     """Generate one vocabulary-key CSV from parsed command arguments.
 
-    The common parent of all resolved files becomes the default file root.
-    Record paths and file-set entries are relative to that root.
+    The common parent of all resolved files becomes the corpus root. An
+    explicit root, containing Git worktree, or absolute filesystem fallback
+    anchors its serialized representation in that order.
 
     Args:
         args: Validated vocabulary-command arguments.
@@ -112,7 +121,7 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
 
     Raises:
         OSError: If an input or output cannot be read or written.
-        ValueError: If output or filtering arguments are invalid.
+        ValueError: If output, filtering, or root arguments are invalid.
     """
     if args.output.suffix.lower() != ".csv":
         raise ValueError("output must have a .csv extension")
@@ -122,6 +131,10 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
         raise ValueError("--require-size must be at least 1")
 
     corpus = Corpus.discover(args.inputs, args.recursive)
+    container_root = ContainerRoot.for_corpus(
+        containing=corpus.root,
+        explicit=args.root,
+    )
     criteria = DefinitionCriteria(
         identifier_threshold=args.identifier_threshold,
         definition_threshold=args.definition_threshold,
@@ -135,6 +148,7 @@ def _run_vocabulary(args: argparse.Namespace) -> int:
         criteria=criteria,
         namespace_id=args.namespace_id,
         namespace_name=_namespace_name(args.output),
+        container_root=container_root,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     records = list(harvest.key.records)

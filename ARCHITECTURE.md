@@ -216,15 +216,17 @@ unless the role truly cannot be named more precisely.
 
 ```text
 CLI
+ ├── ContainerRoot.for_corpus(corpus.root)
  ├── Corpus.discover(inputs)
  │    └── SourceDocument
- ├── VocabularyProducer.produce(corpus)
+ ├── VocabularyProducer.produce(corpus, container_root)
  │    ├── VocabularyScan(document)
  │    │    ├── Occurrence
  │    │    └── Definition(Occurrence)
  │    └── VocabularyHarvest
  │         └── VocabularyKey
  │              ├── KeyMetadata
+ │              │    └── FileRoot
  │              └── Definition...
  └── read_key / write_key
 ```
@@ -265,6 +267,10 @@ interpretation.
 ### Artifact and front-end boundaries
 
 - `VocabularyKey` and `KeyMetadata` model the generated artifact.
+- `ContainerRoot` owns runtime containment, root selection, and safe path
+  conversion. `FileRoot` owns the validated serialized representation.
+- `roots.py` owns Git discovery. The CLI selects automatic roots; direct
+  library production defaults to filesystem containment and absolute metadata.
 - `keyfile.py` translates that model to and from canonical CSV.
 - `cli.py` translates command-line arguments into domain objects, enforces
   output-file policy, and renders summaries or human-readable tables.
@@ -273,13 +279,17 @@ interpretation.
 Dependency direction should remain:
 
 ```text
-cli -> producer -> vocabulary
- |        |
- |        -> keyfile -> vocabulary
+cli --------------------> roots
+ |                         ^
+ -> producer -> keyfile ---|
+ |      |         |
+ |      |         -> vocabulary
+ |      -> vocabulary
  -> keyfile
 ```
 
-The vocabulary layer must not import the producer, key persistence, or CLI.
+The root model depends only on the standard library. The vocabulary layer must
+not import roots, the producer, key persistence, or CLI.
 
 ## Refactoring Method
 
