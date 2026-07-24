@@ -3,7 +3,9 @@
 This document governs structural design in Unslop: how responsibilities become
 objects, how objects relate, and how to refactor toward that model without
 losing behavior. [001_BASIC_CONCEPT.md](design/001_BASIC_CONCEPT.md) remains
-authoritative for vocabulary behavior, scoring, and output semantics.
+authoritative for shared scanner behavior, scoring, source positions, and the
+validation baseline. [003_VOCABULARY_PIPELINE.md](design/003_VOCABULARY_PIPELINE.md)
+governs the planned vocabulary artifacts and operations.
 [DOCUMENTATION.md](DOCUMENTATION.md) governs how the resulting public contracts
 are documented.
 
@@ -290,6 +292,40 @@ cli --------------------> roots
 
 The root model depends only on the standard library. The vocabulary layer must
 not import roots, the producer, key persistence, or CLI.
+
+## Ratified Pipeline Direction
+
+The current object model above describes implemented Production. The next
+iteration, ratified in `design/003_VOCABULARY_PIPELINE.md`, separates three
+operations without separating Markdown interpretation:
+
+```text
+identify: Corpus ──> VocabularyScan ──> OccurrenceInventory
+define:   Corpus or OccurrenceInventory
+                    ──> validated SourceDocument context
+                    ──> DefinedVocabulary
+merge:    DefinedVocabulary... ──> DefinedVocabulary
+```
+
+The stable architectural boundaries are:
+
+- `vocabulary.py` continues to own parsing, tokenization, alignment, occurrence
+  discovery, and both scores.
+- Corpus-backed `identify` and `define` share discovery and exact source reads;
+  inventory-fed `define` must revalidate spans against those sources.
+- Artifact models own their distinct row invariants. An occurrence inventory is
+  not a defined vocabulary merely because both serialize as CSV.
+- Persistence owns the common metadata header, nullable manual-evidence fields,
+  schema validation, and deterministic ordering.
+- `merge` depends on artifact and root compatibility, not on parser or scoring
+  policy.
+- CLI front-ends adapt arguments and output policy; they do not select winners
+  or resolve duplicates.
+
+Do not implement the pipeline as three independent scanners or as modes on one
+loosely validated record bag. Introduce only the objects justified by the
+contracts and tests; exact class and module names remain implementation
+decisions.
 
 ## Refactoring Method
 

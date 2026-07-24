@@ -16,6 +16,16 @@ Read `design/002_CONTAINER_RESOLUTION.md` before changing root selection,
 generated-key path anchoring, or key-path expansion. It is authoritative for
 container discovery, containment, and portable `file_root` behavior.
 
+Read `design/003_VOCABULARY_PIPELINE.md` before changing the `identify`,
+`define`, or `merge` operations; occurrence-inventory or defined-vocabulary
+schemas; exclusions; definition selection; manual supplements; or namespace
+membership. It supersedes the corresponding producer and adjudicated-layer
+decisions in 001.
+
+Read `design/004_DEFINITION_SOURCE_SCORING.md` before introducing any
+file-level evidence or tie-breaker into definition selection. That mechanism is
+experimental and must not become a silent default.
+
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing object boundaries,
 module ownership, inheritance or composition relationships, or the public
 object model.
@@ -64,6 +74,10 @@ The command surface currently consists of:
 
 - `unslop vocabulary` with alias `unslop vocab`
 - `unslop show FILE.csv`
+
+The planned `identify`, `define`, and `merge` surface is ratified in
+`design/003_VOCABULARY_PIPELINE.md` but is not implemented yet. Do not document
+planned commands as available before their tests and implementation land.
 
 ## Non-negotiable invariants
 
@@ -128,6 +142,11 @@ position. Wrapped list continuation lines do not inherit list-opening credit.
 
 The producer writes only the generated layer. It must never overwrite or
 synthesize the future adjudicated layer.
+
+These bullets describe the currently implemented producer. The successor
+inventory, defined-vocabulary, manual-supplement, and merge contracts are
+governed by `design/003_VOCABULARY_PIPELINE.md`; implementation must revise
+this section atomically rather than blending the two models.
 
 ## Commands
 
@@ -205,7 +224,9 @@ Implemented:
 Deferred unless explicitly requested and designed:
 
 - Vocabulary consumer and namespace-aware joins
-- Adjudicated-layer format and mutation
+- Ratified `identify`, `define`, and `merge` pipeline
+- Manual-supplement merge implementation
+- Definition-source scoring experiment
 - Gloss extraction
 - Per-identifier grouped output
 - Path-reference validation

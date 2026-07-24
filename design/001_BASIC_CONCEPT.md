@@ -26,6 +26,16 @@
 > data, not tooling, and neither is roadmap-specific. Making this
 > declaration mechanical rather than prose is the tool's own job
 > (§Namespace mechanics).
+>
+> **Superseded in part 2026-07-23.** The ratified
+> `003_VOCABULARY_PIPELINE.md` now governs the producer split into
+> `identify`, `define`, and `merge`; occurrence-inventory and
+> defined-vocabulary schemas; exact exclusions; definition deduplication;
+> manual supplements; merge behavior; and file-set-derived default namespace
+> membership. This document remains authoritative for the shared scanner,
+> scoring, source positions, and validation baseline. The optional
+> definition-source tie-break experiment is isolated in
+> `004_DEFINITION_SOURCE_SCORING.md` and is not Production behavior.
 
 ## Purpose
 
@@ -64,6 +74,10 @@ document with glosses applied (Solution B step 2, `CONTAINER_STRATEGIES.md`).
 Not built now, but the API must support it — see §Positions.
 
 ## Commands
+
+> **Implemented snapshot; pipeline superseded 2026-07-23.** The commands in
+> this section describe the 2026-07-22 producer. The successor command and
+> artifact contracts are in `003_VOCABULARY_PIPELINE.md`.
 
 **Producer — `unslop vocabulary` (alias: `unslop vocab`)**
 Scans a corpus, emits the key.
@@ -239,6 +253,10 @@ there.
 
 ### Namespace mechanics *(decided 2026-07-21)*
 
+> **Historical mechanism.** The artifact identity and dotted-reference syntax
+> remain inputs to 003, but 003 now governs how `file_set` membership supplies
+> a document's default namespace and what makes that membership invalid.
+
 Namespacing is **mostly a process-level activity**; the tool's share is
 small and mechanical. The sheet-side syntax anticipated above is now
 specified.
@@ -304,6 +322,11 @@ report *should* carry.
   spec's.
 
 ## Output
+
+> **Implemented snapshot; artifact model superseded 2026-07-23.** The
+> per-definition generated output below describes the existing producer.
+> Inventory, defined-vocabulary, manual-supplement, and merge schemas are
+> governed by 003.
 
 **Two layers, never one** *(new; "files" → "layers" 2026-07-21 — the
 generated layer is one artifact per namespace)* — enforced at the
